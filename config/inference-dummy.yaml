@@ -1,0 +1,13 @@
+# STT Inference Plugin configuration — Dummy engine (load testing, no model required)
+
+server:
+  socket: /tmp/speechmux/stt-dummy.sock  # UDS path this plugin process listens on. Must match plugins-dummy.yaml endpoint socket.
+  engine: dummy                         # Dummy engine: returns fixed text with simulated latency.
+  log_level: INFO                       # Logging verbosity: DEBUG | INFO | WARNING | ERROR.
+  max_concurrent_sessions: 20           # Max concurrent Transcribe requests. Higher for load testing.
+  log_transcription_text: true          # Include recognized text in log output. Set to false to redact.
+
+engine:
+  dummy:                    # Dummy engine settings. No model weights required.
+    latency_ms: 50          # Artificial inference delay (ms). Simulates GPU latency for load testing.
+    text: "hello world"     # Fixed transcript returned for every non-silent audio chunk.
