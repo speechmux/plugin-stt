@@ -7,6 +7,7 @@ import threading
 
 import grpc
 
+from google.protobuf import empty_pb2  # type: ignore[import-untyped]
 from stt_proto.common.v1 import common_pb2
 from stt_proto.inference.v1 import inference_pb2, inference_pb2_grpc
 
@@ -207,7 +208,7 @@ class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):
 
     def GetCapabilities(
         self,
-        request: inference_pb2.Empty,
+        request: empty_pb2.Empty,
         context: grpc.ServicerContext,
     ) -> inference_pb2.InferenceCapabilities:
         return inference_pb2.InferenceCapabilities(
@@ -221,7 +222,7 @@ class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):
 
     def HealthCheck(
         self,
-        request: inference_pb2.Empty,
+        request: empty_pb2.Empty,
         context: grpc.ServicerContext,
     ) -> common_pb2.PluginHealthStatus:
         with self._lock:

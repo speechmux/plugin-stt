@@ -14,7 +14,7 @@ from speechmux_plugin_stt.service.inference_servicer import (
     _decode_options_to_dict,
     _task_name,
 )
-from stt_proto.common.v1 import common_pb2
+from google.protobuf import empty_pb2
 from stt_proto.inference.v1 import inference_pb2
 
 
@@ -238,5 +238,5 @@ def test_memory_error_releases_semaphore():
 
     # After abort, the semaphore slot must have been released (active == 0).
     health_ctx = MagicMock()
-    health = svc.HealthCheck(inference_pb2.Empty(), health_ctx)
+    health = svc.HealthCheck(empty_pb2.Empty(), health_ctx)
     assert health.active == 0

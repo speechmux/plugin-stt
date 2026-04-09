@@ -10,6 +10,7 @@ import pytest
 
 from speechmux_plugin_stt.engine.dummy import DummySTTEngine
 from speechmux_plugin_stt.service.inference_servicer import InferencePluginServicer
+from google.protobuf import empty_pb2
 from stt_proto.common.v1 import common_pb2
 from stt_proto.inference.v1 import inference_pb2
 
@@ -169,7 +170,7 @@ def test_active_count_decremented_after_transcribe():
 
     svc.Transcribe(_make_request(), ctx)
 
-    health = svc.HealthCheck(inference_pb2.Empty(), ctx)
+    health = svc.HealthCheck(empty_pb2.Empty(), ctx)
     assert health.active == 0
 
 
@@ -203,7 +204,7 @@ def test_get_capabilities():
     svc = InferencePluginServicer(engine)
     ctx = _make_context()
 
-    caps = svc.GetCapabilities(inference_pb2.Empty(), ctx)
+    caps = svc.GetCapabilities(empty_pb2.Empty(), ctx)
     assert caps.engine_name == "dummy_stt"
     assert caps.max_concurrent_requests == engine.max_concurrent_requests
     assert len(caps.supported_languages) > 0
@@ -215,7 +216,7 @@ def test_health_check_initial():
     svc = InferencePluginServicer(DummySTTEngine())
     ctx = _make_context()
 
-    health = svc.HealthCheck(inference_pb2.Empty(), ctx)
+    health = svc.HealthCheck(empty_pb2.Empty(), ctx)
     assert health.state == common_pb2.PLUGIN_STATE_READY
     assert health.active == 0
     assert health.message == "ok"
