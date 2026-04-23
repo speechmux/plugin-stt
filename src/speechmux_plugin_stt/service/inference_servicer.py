@@ -1,17 +1,18 @@
-"""InferencePluginServicer: Transcribe unary RPC with concurrency limiting."""
+"""InferencePluginServicer: Transcribe + TranscribeStream with concurrency limiting."""
 
 from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Generator, Iterator
 
 import grpc
 
-from google.protobuf import empty_pb2  # type: ignore[import-untyped]
+from google.protobuf import empty_pb2
 from stt_proto.common.v1 import common_pb2
 from stt_proto.inference.v1 import inference_pb2, inference_pb2_grpc
 
-from speechmux_plugin_stt.engine.base import InferenceEngine
+from speechmux_plugin_stt.engine.base import InferenceEngine, StreamingInferenceEngine
 
 logger = logging.getLogger(__name__)
 
@@ -63,25 +64,31 @@ def _decode_options_to_dict(
     return result
 
 
-class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):
+class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):  # type: ignore[misc]
     """gRPC servicer for the InferencePlugin service.
 
-    Limits concurrency via a Semaphore.  Each Transcribe RPC:
-      1. Acquires the semaphore (non-blocking; aborts with RESOURCE_EXHAUSTED
-         if at capacity).
-      2. Checks context.is_active() before starting inference to avoid wasting
-         GPU time on already-cancelled requests.
-      3. Calls engine.transcribe() and returns the result.
+    Supports both batch (InferenceEngine) and native-streaming
+    (StreamingInferenceEngine) engines. Concurrency limiting, HealthCheck, and
+    GetCapabilities are handled here so individual engine implementations stay
+    free of gRPC concerns.
     """
 
     def __init__(
         self,
-        engine: InferenceEngine,
+        engine: InferenceEngine | StreamingInferenceEngine,
         max_concurrent: int | None = None,
         log_text: bool = True,
     ) -> None:
         self._engine = engine
-        limit = max_concurrent if max_concurrent is not None else engine.max_concurrent_requests
+        self._is_streaming = isinstance(engine, StreamingInferenceEngine)
+
+        if max_concurrent is not None:
+            limit = max_concurrent
+        elif self._is_streaming:
+            limit = engine.max_concurrent_sessions  # type: ignore[union-attr]
+        else:
+            limit = engine.max_concurrent_requests  # type: ignore[union-attr]
+
         self._semaphore = threading.Semaphore(limit)
         self._lock = threading.Lock()
         self._active = 0
@@ -97,6 +104,13 @@ class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):
         request: inference_pb2.TranscribeRequest,
         context: grpc.ServicerContext,
     ) -> inference_pb2.TranscribeResponse:
+        if self._is_streaming:
+            context.abort(
+                grpc.StatusCode.UNIMPLEMENTED,
+                "engine does not support batch transcription",
+            )
+            raise RuntimeError("abort called")  # unreachable
+
         # 1. Capacity check — reject immediately if all slots are occupied.
         if not self._semaphore.acquire(blocking=False):
             context.abort(
@@ -121,7 +135,7 @@ class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):
             # 3. Run inference.
             opts = _decode_options_to_dict(request.decode_options)
             try:
-                result = self._engine.transcribe(
+                result = self._engine.transcribe(  # type: ignore[union-attr]
                     audio_data=request.audio_data,
                     sample_rate=request.sample_rate or 16000,
                     language_code=request.language_code,
@@ -160,14 +174,15 @@ class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):
                 )
                 with self._lock:
                     self._last_error_code = common_pb2.PLUGIN_ERROR_INFERENCE_FAILED
-                    self._last_error_msg = f"inference engine error: {exc}" if str(exc) else "inference engine error"
+                    self._last_error_msg = (
+                        f"inference engine error: {exc}" if str(exc) else "inference engine error"
+                    )
                 context.abort(
                     grpc.StatusCode.INTERNAL,
                     f"inference engine error: {exc}" if str(exc) else "inference engine error",
                 )
 
             # 4. Log result and build response.
-            # Final decodes log at INFO; partial (mid-speech) at DEBUG.
             text_repr = repr(result.text[:120]) if self._log_text else f"[{len(result.text)}c]"
             decode_type = "final" if request.is_final else "partial"
             log = logger.info if request.is_final else logger.debug
@@ -206,18 +221,74 @@ class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):
             with self._lock:
                 self._active -= 1
 
+    def TranscribeStream(
+        self,
+        request_iterator: Iterator[inference_pb2.StreamRequest],
+        context: grpc.ServicerContext,
+    ) -> Generator[inference_pb2.StreamResponse, None, None]:
+        if not self._is_streaming:
+            context.abort(
+                grpc.StatusCode.UNIMPLEMENTED,
+                "engine does not support streaming transcription",
+            )
+            return
+
+        # Read and validate first message (must be StreamStartConfig).
+        try:
+            first = next(request_iterator, None)
+        except Exception:
+            return
+        if first is None:
+            return
+        if not first.HasField("start"):
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                "first StreamRequest message must be StreamStartConfig",
+            )
+            return
+        session_config = first.start
+
+        # Capacity check.
+        if not self._semaphore.acquire(blocking=False):
+            context.abort(
+                grpc.StatusCode.RESOURCE_EXHAUSTED,
+                "inference plugin at session capacity",
+            )
+            return
+
+        with self._lock:
+            self._active += 1
+        try:
+            yield from self._engine.stream(request_iterator, session_config)  # type: ignore[union-attr]
+        except Exception:
+            logger.exception(
+                "error in TranscribeStream session_id=%s", session_config.session_id
+            )
+        finally:
+            self._semaphore.release()
+            with self._lock:
+                self._active -= 1
+
     def GetCapabilities(
         self,
         request: empty_pb2.Empty,
         context: grpc.ServicerContext,
     ) -> inference_pb2.InferenceCapabilities:
+        if self._is_streaming:
+            engine = self._engine
+            return inference_pb2.InferenceCapabilities(
+                engine_name=engine.engine_name,
+                supported_languages=list(engine.supported_languages),
+                streaming_mode=engine.streaming_mode,  # type: ignore[union-attr]
+                endpointing_capability=engine.endpointing_capability,  # type: ignore[union-attr]
+            )
         return inference_pb2.InferenceCapabilities(
             engine_name=self._engine.engine_name,
-            model_size=self._engine.model_size,
-            device=self._engine.device,
-            supported_languages=self._engine.supported_languages,
-            max_concurrent_requests=self._engine.max_concurrent_requests,
-            supports_partial_decode=self._engine.supports_partial_decode,
+            model_size=self._engine.model_size,  # type: ignore[union-attr]
+            device=self._engine.device,  # type: ignore[union-attr]
+            supported_languages=list(self._engine.supported_languages),
+            max_concurrent_requests=self._engine.max_concurrent_requests,  # type: ignore[union-attr]
+            supports_partial_decode=self._engine.supports_partial_decode,  # type: ignore[union-attr]
         )
 
     def HealthCheck(

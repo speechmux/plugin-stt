@@ -1,9 +1,12 @@
-"""InferenceEngine Protocol — the interface all STT engines must implement."""
+"""InferenceEngine and StreamingInferenceEngine Protocols for STT engines."""
 
 from __future__ import annotations
 
 import struct
+from collections.abc import Generator, Iterator
 from typing import NamedTuple, Protocol, runtime_checkable
+
+from stt_proto.inference.v1 import inference_pb2
 
 
 class TranscribeResult(NamedTuple):
@@ -82,6 +85,51 @@ class InferenceEngine(Protocol):
         ...
 
 
+@runtime_checkable
+class StreamingInferenceEngine(Protocol):
+    """Protocol for native-streaming STT engines (STREAMING_MODE_NATIVE).
+
+    Streaming engines manage their own utterance boundary detection and emit
+    is_final hypotheses autonomously. The plugin-stt servicer handles gRPC
+    framing, semaphore, HealthCheck, and GetCapabilities.
+
+    Engines are discovered via the same ``speechmux.stt_engine`` entry-point
+    group as batch engines; the servicer uses isinstance to distinguish them
+    at runtime.
+    """
+
+    engine_name: str
+    supported_languages: list[str]
+    max_concurrent_sessions: int
+    streaming_mode: int
+    endpointing_capability: int
+
+    def load(self) -> None:
+        """Eagerly load model weights before the gRPC server starts."""
+        ...
+
+    def stream(
+        self,
+        request_iterator: Iterator[inference_pb2.StreamRequest],
+        session_config: inference_pb2.StreamStartConfig,
+    ) -> Generator[inference_pb2.StreamResponse, None, None]:
+        """Handle one TranscribeStream bidi session.
+
+        The servicer has already consumed and validated the first StreamStartConfig
+        message. *request_iterator* yields the remaining AudioChunk / StreamControl
+        messages. The generator must be exhaustible — it should return (not raise)
+        when the iterator is exhausted.
+
+        Args:
+            request_iterator: Remaining request messages after StreamStartConfig.
+            session_config: Parsed StreamStartConfig from the first message.
+
+        Yields:
+            StreamResponse messages (partial and final hypotheses).
+        """
+        ...
+
+
 def pcm16_rms(pcm_data: bytes) -> float:
     """Return the RMS amplitude of a PCM S16LE byte buffer, normalised to [0, 1].
 
@@ -95,4 +143,4 @@ def pcm16_rms(pcm_data: bytes) -> float:
     if num_samples == 0:
         return 0.0
     samples = struct.unpack(f"<{num_samples}h", pcm_data[: num_samples * 2])
-    return (sum(sample * sample for sample in samples) / num_samples) ** 0.5 / 32768.0
+    return float((sum(s * s for s in samples) / num_samples) ** 0.5) / 32768.0

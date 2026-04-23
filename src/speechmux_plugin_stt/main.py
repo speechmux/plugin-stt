@@ -13,7 +13,7 @@ import grpc
 
 from stt_proto.inference.v1 import inference_pb2_grpc
 
-from speechmux_plugin_stt.engine.base import InferenceEngine
+from speechmux_plugin_stt.engine.base import InferenceEngine, StreamingInferenceEngine
 from speechmux_plugin_stt.engine.registry import get_engine, list_engines
 from speechmux_plugin_stt.service.inference_servicer import InferencePluginServicer
 
@@ -81,7 +81,7 @@ def _require_server_field(config: dict[str, Any], key: str) -> str:
     return str(value)
 
 
-def _load_engine(engine_name: str, config: dict[str, Any]) -> InferenceEngine:
+def _load_engine(engine_name: str, config: dict[str, Any]) -> InferenceEngine | StreamingInferenceEngine:
     """Instantiate the engine registered under *engine_name*.
 
     Args:
@@ -135,7 +135,12 @@ def serve(argv: list[str] | None = None) -> None:
     # Effective concurrency: YAML server.max_concurrent_sessions overrides the
     # engine class default so operators can tune throughput without changing code.
     yaml_max = server_cfg.get("max_concurrent_sessions")
-    effective_max = int(yaml_max) if yaml_max is not None else engine.max_concurrent_requests
+    if yaml_max is not None:
+        effective_max = int(yaml_max)
+    elif isinstance(engine, StreamingInferenceEngine):
+        effective_max = engine.max_concurrent_sessions
+    else:
+        effective_max = engine.max_concurrent_requests
     logger.info(
         "STT concurrency limit: %d (source: %s)",
         effective_max,

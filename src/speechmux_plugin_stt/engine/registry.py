@@ -5,18 +5,18 @@ from __future__ import annotations
 from importlib.metadata import entry_points
 from typing import Any, cast
 
-from speechmux_plugin_stt.engine.base import InferenceEngine
+from speechmux_plugin_stt.engine.base import InferenceEngine, StreamingInferenceEngine
 
 
 def get_engine(
     name: str, config: dict[str, Any] | None = None
-) -> InferenceEngine:
-    """Return an instantiated InferenceEngine registered under *name*.
+) -> InferenceEngine | StreamingInferenceEngine:
+    """Return an instantiated engine registered under *name*.
 
     If *config* is provided and the engine class exposes a ``from_config``
     classmethod, the engine is constructed via ``cls.from_config(config)``
-    so that YAML settings (model size, device, compute type, etc.) are
-    applied. Otherwise ``cls()`` is called with no arguments.
+    so that YAML settings are applied. Otherwise ``cls()`` is called with no
+    arguments.
 
     Args:
         name: Entry-point name of the engine to load (e.g. ``"mlx_whisper"``).
@@ -24,8 +24,8 @@ def get_engine(
             ``cls.from_config(config)`` if the engine supports it.
 
     Returns:
-        An instantiated InferenceEngine ready to call ``load()`` and
-        ``transcribe()``.
+        An instantiated InferenceEngine or StreamingInferenceEngine ready to
+        call ``load()``.
 
     Raises:
         KeyError: If no entry-point named *name* is found in the
@@ -36,8 +36,8 @@ def get_engine(
         if ep.name == name:
             cls = ep.load()
             if config is not None and hasattr(cls, "from_config"):
-                return cast(InferenceEngine, cls.from_config(config))
-            return cast(InferenceEngine, cls())
+                return cast(InferenceEngine | StreamingInferenceEngine, cls.from_config(config))
+            return cast(InferenceEngine | StreamingInferenceEngine, cls())
     available = [ep.name for ep in eps]
     raise KeyError(
         f"STT engine {name!r} not found. "
