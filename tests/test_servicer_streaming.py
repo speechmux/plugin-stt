@@ -208,6 +208,44 @@ def test_get_capabilities_streaming_engine() -> None:
 # ── Transcribe: streaming engine rejects ─────────────────────────────────────
 
 
+# ── TranscribeStream: engine raises exception ─────────────────────────────────
+
+
+def test_transcribestream_engine_raise_aborts_with_internal() -> None:
+    """When engine.stream() raises, TranscribeStream must abort with INTERNAL and set state ERROR."""
+    from stt_proto.common.v1 import common_pb2 as _common_pb2
+
+    class _CrashingEngine(_FakeStreamingEngine):
+        def stream(
+            self,
+            request_iterator: Iterator[inference_pb2.StreamRequest],
+            session_config: inference_pb2.StreamStartConfig,
+        ) -> Generator[inference_pb2.StreamResponse, None, None]:
+            raise RuntimeError("engine exploded")
+            yield  # make it a generator
+
+    svc = InferencePluginServicer(_CrashingEngine())
+
+    class _AbortCalled(Exception):
+        pass
+
+    ctx = MagicMock()
+    ctx.abort.side_effect = _AbortCalled
+
+    with pytest.raises(_AbortCalled):
+        list(svc.TranscribeStream(iter([_make_start_request()]), ctx))
+
+    ctx.abort.assert_called_once_with(
+        grpc.StatusCode.INTERNAL,
+        "streaming engine error: engine exploded",
+    )
+    health = svc.HealthCheck(empty_pb2.Empty(), MagicMock())
+    assert health.state == _common_pb2.PLUGIN_STATE_ERROR
+
+
+# ── Transcribe: streaming engine rejects ─────────────────────────────────────
+
+
 def test_transcribe_unimplemented_for_streaming_engine() -> None:
     """Transcribe must abort with UNIMPLEMENTED for a StreamingInferenceEngine."""
     svc = InferencePluginServicer(_FakeStreamingEngine())
