@@ -4,7 +4,7 @@ server:
   socket: /tmp/speechmux/stt-sherpa.sock  # UDS path this plugin process listens on. Must match plugins.yaml endpoint socket.
   engine: sherpa_onnx_zipformer           # Engine to load (entry-point name from speechmux.stt_engine group).
   log_level: INFO                       # Logging verbosity: DEBUG | INFO | WARNING | ERROR.
-  max_concurrent_sessions: 10           # Max concurrent Transcribe requests. Set to available GPU/CPU threads.
+  max_concurrent_sessions: 10           # Max concurrent streaming sessions. Set to available GPU/CPU threads.
   log_transcription_text: true          # Include recognized text in log output. Set to false to redact
                                         # text from logs (shows character count instead) for privacy compliance.
 
