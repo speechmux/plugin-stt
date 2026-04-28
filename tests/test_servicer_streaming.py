@@ -246,6 +246,35 @@ def test_transcribestream_engine_raise_aborts_with_internal() -> None:
 # ── Transcribe: streaming engine rejects ─────────────────────────────────────
 
 
+def test_transcribestream_exception_sets_health_error_detail() -> None:
+    """After engine.stream() raises, HealthCheck must report error code and message."""
+    from stt_proto.common.v1 import common_pb2 as _common_pb2
+
+    class _CrashingEngine(_FakeStreamingEngine):
+        def stream(
+            self,
+            request_iterator: Iterator[inference_pb2.StreamRequest],
+            session_config: inference_pb2.StreamStartConfig,
+        ) -> Generator[inference_pb2.StreamResponse, None, None]:
+            raise RuntimeError("disk full")
+            yield  # make it a generator
+
+    svc = InferencePluginServicer(_CrashingEngine())
+
+    ctx = MagicMock()
+    ctx.abort.side_effect = Exception("aborted")
+
+    try:
+        list(svc.TranscribeStream(iter([_make_start_request()]), ctx))
+    except Exception:
+        pass
+
+    health = svc.HealthCheck(empty_pb2.Empty(), MagicMock())
+    assert health.state == _common_pb2.PLUGIN_STATE_ERROR
+    assert health.last_error == _common_pb2.PLUGIN_ERROR_INFERENCE_FAILED
+    assert "disk full" in health.message
+
+
 def test_transcribe_unimplemented_for_streaming_engine() -> None:
     """Transcribe must abort with UNIMPLEMENTED for a StreamingInferenceEngine."""
     svc = InferencePluginServicer(_FakeStreamingEngine())

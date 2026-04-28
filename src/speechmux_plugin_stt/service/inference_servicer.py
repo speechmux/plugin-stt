@@ -265,7 +265,8 @@ class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):  # ty
                 "error in TranscribeStream session_id=%s", session_config.session_id
             )
             with self._lock:
-                self._last_error = str(exc)
+                self._last_error_code = common_pb2.PLUGIN_ERROR_INFERENCE_FAILED
+                self._last_error_msg = str(exc)
                 self._state = common_pb2.PLUGIN_STATE_ERROR
             context.abort(grpc.StatusCode.INTERNAL, f"streaming engine error: {exc}")
         finally:
