@@ -48,17 +48,9 @@ engine:
       default_language: ko  # BCP-47 fallback when session language_code is absent or unsupported.
       languages:
         ko:
-          encoder: /path/to/ko/encoder-epoch-99-avg-1.int8.onnx  # Zipformer encoder weights.
-          decoder: /path/to/ko/decoder-epoch-99-avg-1.int8.onnx  # Prediction network weights.
-          joiner:  /path/to/ko/joiner-epoch-99-avg-1.int8.onnx   # Joint network weights.
-          tokens:  /path/to/ko/tokens.txt                         # Vocabulary file.
-        en:
-          encoder: /path/to/en/encoder-epoch-99-avg-1.int8.onnx
-          decoder: /path/to/en/decoder-epoch-99-avg-1.int8.onnx
-          joiner:  /path/to/en/joiner-epoch-99-avg-1.int8.onnx
-          tokens:  /path/to/en/tokens.txt
-        ja:
-          encoder: /path/to/ja/encoder-epoch-99-avg-1.int8.onnx
-          decoder: /path/to/ja/decoder-epoch-99-avg-1.int8.onnx
-          joiner:  /path/to/ja/joiner-epoch-99-avg-1.int8.onnx
-          tokens:  /path/to/ja/tokens.txt
+          encoder: plugin-stt-sherpa-onnx/models/ko-streaming/encoder-epoch-99-avg-1.int8.onnx  # Relative to workspace root.
+          decoder: plugin-stt-sherpa-onnx/models/ko-streaming/decoder-epoch-99-avg-1.int8.onnx
+          joiner:  plugin-stt-sherpa-onnx/models/ko-streaming/joiner-epoch-99-avg-1.int8.onnx
+          tokens:  plugin-stt-sherpa-onnx/models/ko-streaming/tokens.txt
+        # en/ja: Zipformer2-streaming models not yet downloaded. Add entries once
+        #        sherpa-onnx streaming checkpoints are available for those languages.

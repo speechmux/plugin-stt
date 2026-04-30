@@ -111,7 +111,17 @@ class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):  # ty
             )
             raise RuntimeError("abort called")  # unreachable
 
-        # 1. Capacity check — reject immediately if all slots are occupied.
+        # 1a. Language check — reject before acquiring the slot.
+        requested_lang = request.language_code
+        if requested_lang and requested_lang not in self._engine.supported_languages:
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                f"language '{requested_lang}' is not supported by this engine"
+                f" (supported: {sorted(self._engine.supported_languages)})",
+            )
+            raise RuntimeError("abort called")  # unreachable
+
+        # 1b. Capacity check — reject immediately if all slots are occupied.
         if not self._semaphore.acquire(blocking=False):
             context.abort(
                 grpc.StatusCode.RESOURCE_EXHAUSTED,
@@ -247,6 +257,16 @@ class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):  # ty
             )
             return
         session_config = first.start
+
+        # Language check — reject languages that have no loaded model.
+        requested_lang = session_config.language_code
+        if requested_lang and requested_lang not in self._engine.supported_languages:
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                f"language '{requested_lang}' is not supported by this engine"
+                f" (supported: {sorted(self._engine.supported_languages)})",
+            )
+            return
 
         # Capacity check.
         if not self._semaphore.acquire(blocking=False):
