@@ -314,6 +314,7 @@ class InferencePluginServicer(inference_pb2_grpc.InferencePluginServicer):  # ty
             supported_languages=list(self._engine.supported_languages),
             max_concurrent_requests=self._engine.max_concurrent_requests,  # type: ignore[union-attr]
             supports_partial_decode=self._engine.supports_partial_decode,  # type: ignore[union-attr]
+            streaming_mode=inference_pb2.STREAMING_MODE_BATCH_ONLY,
         )
 
     def HealthCheck(
