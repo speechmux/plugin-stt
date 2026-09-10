@@ -31,6 +31,7 @@ no `main.py`, no server code, and reads no config file itself.
 ```
 plugin-stt-<impl>/
 ├── AGENTS.md                 # this file — verbatim copy of plugin-stt/templates/AGENTS.md
+├── CLAUDE.md                 # one line: `@AGENTS.md` — never a copy of the rules
 ├── ENGINE.md                 # engine-specific rules, pitfalls and rationale
 ├── README.md                 # user-facing: install, config keys, model download
 ├── LICENSE
@@ -138,6 +139,7 @@ Never depend on Core, another engine, or `grpc` server machinery.
   attributes used in loop conditions.
 - Diverge the `Makefile` from the other engine repos.
 - Edit this file. Edit `plugin-stt/templates/AGENTS.md` and re-copy.
+- Put anything in `CLAUDE.md` other than `@AGENTS.md`.
 
 ## Where the engine-specific rules are
 
