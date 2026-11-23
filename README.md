@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> **This repository is archived.** `plugin-stt` now lives in
+> [speechmux/speechmux](https://github.com/speechmux/speechmux/tree/main/plugin-stt), with its
+> full history. Open issues and pull requests there.
+
 # speechmux/plugin-stt
 
 STT (Speech-to-Text) inference plugin base framework. Provides the gRPC servicer, the `InferenceEngine` and `StreamingInferenceEngine` Protocols (interfaces), a Dummy engine for load testing, and an `entry_points`-based engine auto-discovery system.
